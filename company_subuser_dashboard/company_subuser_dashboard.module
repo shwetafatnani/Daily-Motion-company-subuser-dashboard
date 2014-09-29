@@ -1,0 +1,699 @@
+<?php
+
+/**
+ * @file
+ * company sub user related functionality
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function company_subuser_dashboard_menu() {
+  $items = array();
+
+  $items['strong_tags_process'] = array(
+    'title' => 'Process strong tags job',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('company_subuser_dashboard_strongtag_form'),
+    'access callback' => 'company_subuser_access_callback',
+    'file' => 'include/process_strongtags.pages.inc',
+    'file path' => drupal_get_path('module', 'company_subuser_dashboard'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['company_subuser_dashboard/%ctools_js'] = array(
+    'page callback' => 'company_subuser_dashboard_callback',
+    'page arguments' => array(1, 2, 3, 4, 5, 6, NULL),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['dmadmin_comment/%ctools_js'] = array(
+    'page callback' => 'company_subuser_dashboard_callback',
+    'page arguments' => array(1, 2, 3, 4, 5, 6, 7),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['get_video_title/%'] = array(
+    'page callback' => 'company_subuser_dashboard_videoid_callback',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['get_recipient/%'] = array(
+    'page callback' => 'company_subuser_dashboard_company_callback',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['get_freebase_suggestion'] = array(
+    'title' => 'Get Free Base Suggestion',
+    'page callback' => 'get_freebase_suggestion',
+    'access callback' => 'freebase_suggestion_callback',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['translate_video_process'] = array(
+    'title' => 'Process translate video',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('company_subuser_dashboard_translatevideo_form'),
+    'access callback' => 'company_subuser_access_callback',
+    'file' => 'include/process_translate_videos.pages.inc',
+    'file path' => drupal_get_path('module', 'company_subuser_dashboard'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements custom permission.
+ */
+function company_subuser_access_callback() {
+  global $user;
+  if (in_array(6, array_keys($user->roles))) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Implements custom permission.
+ */
+function freebase_suggestion_callback() {
+  global $user;
+  if (in_array(6, array_keys($user->roles)) || in_array(4, array_keys($user->roles))) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Get all pending videos.
+ */
+function get_all_pending_video($job_type = NULL) {
+  $return_result = array();
+  global $user;
+  $query = db_select('field_data_field_vm_status', 'fvs');
+  $query->fields('fvs', array('entity_id'));
+  $query->leftjoin('field_data_field_company_subuser_refernce', 'fcsr', 'fvs.entity_id = fcsr.entity_id');
+  $query->leftjoin('field_data_field_parent_node_reference', 'fpnr', 'fcsr.entity_id = fpnr.entity_id');
+  $query->leftjoin('field_data_field_job_type', 'fjt', 'fpnr.field_parent_node_reference_target_id = fjt.entity_id');
+  $query->condition('fvs.field_vm_status_tid', array(49, 51), 'IN');
+  $query->condition('fcsr.field_company_subuser_refernce_target_id', $user->uid, '=');
+  $query->condition('fjt.field_job_type_tid', $job_type, '=');
+  $result = $query->execute()->fetchAll();
+  if (!empty($result)) {
+    foreach ($result as $result) {
+      $return_result[] = $result->entity_id;
+    }
+    return $return_result;
+  }
+  return $return_result;
+}
+
+/**
+ * Api call for strong tags input.
+ */
+function get_freebase_suggestion() {
+  $return_result = array();
+  $freebase_api_key = 'AIzaSyBBJoStIWMWfWkgHIoRtLCCAg8B4ay2Vk8';
+  $service_url = 'https://www.googleapis.com/freebase/v1/search';
+  $params = array(
+    'query' => !empty($_GET['term']) ? $_GET['term'] : '',
+    'key' => $freebase_api_key,
+  );
+  $url = $service_url . '?' . http_build_query($params);
+  $ch = curl_init();
+  curl_setopt($ch, CURLOPT_URL, $url);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+  $response = json_decode(curl_exec($ch), TRUE);
+  curl_close($ch);
+  foreach ($response['result'] as $key => $result) {
+    $return_result[$key]['id'] = $result['name'];
+    $return_result[$key]['label'] = $result['name'];
+    $return_result[$key]['value'] = $result['name'];
+  }
+  print json_encode($return_result);
+  exit();
+}
+
+/**
+ * Get manager.
+ */
+function get_user_manager() {
+
+  $result = array();
+  global $user;
+  $subquery = db_select('field_data_endpoints', 'fd');
+  $subquery->fields('fd', array('entity_id'));
+  $subquery->condition('fd.bundle', 'subuser', '=');
+  $subquery->condition('fd.endpoints_r_index', 0, '=');
+  $subquery->condition('fd.endpoints_entity_id', $user->uid, '=');
+  $eid = $subquery->execute()->fetch();
+
+  $query = db_select('field_data_endpoints', 'fde');
+  $query->fields('fde', array('endpoints_entity_id'));
+  $query->condition('fde.bundle', 'subuser', '=');
+  $query->condition('fde.endpoints_r_index', 1, '=');
+  $query->condition('fde.entity_id', $eid->entity_id);
+  $result = $query->execute()->fetchAll();
+
+  return $result[0]->endpoints_entity_id;
+}
+
+/**
+ * Implements CTools Modal for private message write form in pop up window.
+ */
+function company_subuser_dashboard_callback($ajax, $msg, $new, $uid, $video_id, $video_title, $company = NULL) {
+  ctools_include('ajax');
+  ctools_include('modal');
+
+  $param = $video_id . '*' . $video_title;
+  $param .= isset($company) && !empty($company) ? '*' . $company : '';
+
+  if ($ajax) {
+
+    $args = array(
+      $uid,
+      $param,
+    );
+
+    module_load_include('inc', 'privatemsg', 'privatemsg.pages');
+
+    $form_state = array(
+      'ajax' => TRUE,
+      'title' => t('Send Message'),
+      'build_info' => array(
+        'args' => $args,
+      ),
+    );
+
+    $output = ctools_modal_form_wrapper('privatemsg_new', $form_state);
+
+    if (!empty($form_state['executed'])) {
+      ctools_add_js('ajax-responder');
+      $output = array();
+      $output[] = ctools_ajax_command_reload();
+    }
+
+    print ajax_render($output);
+    drupal_exit();
+  }
+  else {
+    return drupal_get_form('privatemsg_new', $uid, '', NULL);
+  }
+}
+
+/**
+ * Private message form alter.
+ */
+function company_subuser_dashboard_form_privatemsg_new_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  $form['subject']['#type'] = 'hidden';
+  $form['recipient']['#description'] = '';
+  // Reply Form.
+  if (isset($form_state['build_info']['args'][2]) && is_int($form_state['build_info']['args'][2])) {
+    $thread_id = $form_state['build_info']['args'][2];
+    $msg = entity_load('privatemsg_message', array($form_state['build_info']['args'][2]), array(), FALSE);
+    if (isset($msg[$thread_id]) && !empty($msg[$thread_id])) {
+      $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#disabled'] = TRUE;
+      $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#disabled'] = TRUE;
+      $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#disabled'] = TRUE;
+      $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#default_value'] = $msg[$thread_id]->field_company_name_[LANGUAGE_NONE][0]['value'];
+      $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#default_value'] = $msg[$thread_id]->field_msg_video_id[LANGUAGE_NONE][0]['value'];
+      $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#default_value'] = $msg[$thread_id]->field_msg_video_title[LANGUAGE_NONE][0]['value'];
+    }
+  }
+  else {
+    $manager = get_usermanager($user->uid);
+    $result = array();
+    $query = db_select('field_data_field_company_name', 'fdc');
+    $query->fields('fdc', array('field_company_name_value'));
+    $query->condition('fdc.entity_id', $user->uid, '=');
+    $result = $query->execute()->fetch();
+
+    if (isset($result->field_company_name_value)) {
+      $company = $result->field_company_name_value;
+      $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#default_value'] = $company;
+      $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#disabled'] = TRUE;
+    }
+
+    if (isset($user->roles[6]) && ($user->roles[6] == "Company User")) {
+      $form['#prefix'] = '<div id="custom-privatemsg-new-form">';
+      $form['#suffix'] = '</div>';
+      if (isset($form_state['build_info']['args'][1])) {
+        $form['recipient']['#disabled'] = TRUE;
+        if (empty($form['recipient']['#default_value'])) {
+          $form['recipient']['#default_value'] = $manager;
+        }
+        $vid = explode('*', $form_state['build_info']['args'][1]);
+        $form['subject']['#default_value'] = '';
+        $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[1]) && !empty($vid[1]) ? TRUE : FALSE;
+        $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[0]) && !empty($vid[0]) ? TRUE : FALSE;
+        $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[0]) && !empty($vid[0]) ? $vid[0] : '';
+        $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[1]) && !empty($vid[1]) ? $vid[1] : '';
+        if (isset($vid[1]) && !empty($vid[1])) {
+          unset($form['actions']['cancel']);
+        }
+      }
+    }
+    elseif (isset($user->roles[5]) && ($user->roles[5] == "Company Manager")) {
+      $form['#prefix'] = '<div id="custom-privatemsg-new-form">';
+      $form['#suffix'] = '</div>';
+      $form['recipient']['#disabled'] = TRUE;
+      if (empty($form['recipient']['#default_value'])) {
+        $form['recipient']['#default_value'] = $manager;
+      }
+      $vid = explode('*', $form_state['build_info']['args'][1]);
+      $form['subject']['#default_value'] = '';
+      $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[1]) && !empty($vid[1]) ? TRUE : FALSE;
+      $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[0]) && !empty($vid[0]) ? TRUE : FALSE;
+      $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[0]) && !empty($vid[0]) ? $vid[0] : '';
+      $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[1]) && !empty($vid[1]) ? $vid[1] : '';
+    }
+    elseif (isset($user->roles[4]) && ($user->roles[4] == "DM Admin")) {
+      if (isset($form_state['build_info']['args'][1])) {
+        $form['subject']['#default_value'] = '';
+        if (!empty($form['recipient']['#default_value'])) {
+          $vid = explode('*', $form_state['build_info']['args'][1]);
+          $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[1]) && !empty($vid[1]) ? TRUE : FALSE;
+          $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($vid[0]) && !empty($vid[0]) ? TRUE : FALSE;
+          $form['field_msg_video_id'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[0]) && !empty($vid[0]) ? $vid[0] : '';
+          $form['field_msg_video_title'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($vid[1]) && !empty($vid[1]) ? $vid[1] : '';
+
+          // Check for reject messsage form.
+          $arguments = explode('%', $vid[2]);
+          $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#default_value'] = isset($arguments[0]) && !empty($arguments[0]) ? $arguments[0] : '';
+          $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#disabled'] = isset($arguments[0]) && !empty($arguments[0]) ? TRUE : FALSE;
+
+          $nid = isset($arguments[1]) && !empty($arguments[1]) ? $arguments[1] : '';
+          if (!empty($nid)) {
+            $form['reject_nid'] = array(
+              '#type' => 'hidden',
+              '#value' => $nid,
+            );
+            $form['#submit'][] = 'company_subuser_dashboard_custom_privatemsg_form_submit';
+          }
+          $form['recipient']['#disabled'] = TRUE;
+          unset($form['actions']['cancel']);
+        }
+        else {
+          $companies = get_company_names();
+          $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#type'] = 'select';
+          $form['field_company_name_'][LANGUAGE_NONE][0]['value']['#options'] = $companies;
+          unset($form['field_company_name_'][LANGUAGE_NONE][0]['value']['#size']);
+        }
+      }
+    }
+  }
+}
+
+
+/**
+ * Privatemsg_form_submit for reject video.
+ */
+function company_subuser_dashboard_custom_privatemsg_form_submit($form, &$form_state) {
+  if (isset($form_state['input']['reject_nid']) && !empty($form_state['input']['reject_nid'])) {
+    $nid = $form_state['input']['reject_nid'];
+    $node = node_load($nid);
+    $node->field_vm_status[LANGUAGE_NONE][0]['tid'] = 16;
+    $node->field_date_of_job_rejected[LANGUAGE_NONE][0]['value'] = date("Y-m-d h:m:s");
+    node_save($node);
+    $query = db_select('field_data_field_job_type', 'f');
+    $query->fields('f', array('field_job_type_tid'));
+    $query->where('f.entity_id = :nid', array(':nid' => $node->field_parent_node_reference[LANGUAGE_NONE][0]['target_id']));
+    $result = $query->execute()->fetch();
+    drupal_set_message('Video - ' . $node->title . ' has been rejected.', 'status');
+    if (!empty($result)) {
+      if ($result->field_job_type_tid == 1) {
+        $commands[] = ctools_modal_command_dismiss();
+        $commands[] = ctools_ajax_command_redirect('jobs-status');
+        print ajax_render($commands);
+        exit;
+      }
+      elseif ($result->field_job_type_tid == 2) {
+        $commands[] = ctools_modal_command_dismiss();
+        $commands[] = ctools_ajax_command_redirect('translate-jobs-status');
+        print ajax_render($commands);
+        exit;
+      }
+    }
+  }
+}
+
+/**
+ * Hook_privatemsg_list_alter.
+ */
+function company_subuser_dashboard_form_privatemsg_list_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  $columns = array_merge(array(
+    'video_id',
+    'video_title',
+    'company',
+    'reply',
+    'delete',
+    'forward'),
+  array_filter(variable_get('privatemsg_display_fields', array('participants'))));
+
+  $headers = _privatemsg_list_headers($columns);
+  $form['updated']['list']['#header'] = $headers;
+
+  if (!empty($form['updated']['list']['#options'])) {
+    $threads = array_keys($form['updated']['list']['#options']);
+    $q = db_select('field_data_field_msg_video_id', 'f');
+    $q->join('field_data_field_msg_video_title', 'fv', 'f.entity_id = fv.entity_id');
+    $q->join('field_data_field_company_name_', 'fc', 'f.entity_id = fc.entity_id');
+    $q->fields('f', array('entity_id', 'field_msg_video_id_value'));
+    $q->fields('fv', array('field_msg_video_title_value'));
+    $q->fields('fc', array('field_company_name__value'));
+
+    foreach ($q->execute() as $v_id) {
+      if (in_array($v_id->entity_id, $threads)) {
+        $form['updated']['list']['#options'][$v_id->entity_id]['video_id'] = $v_id->field_msg_video_id_value;
+        $form['updated']['list']['#options'][$v_id->entity_id]['video_title'] = $v_id->field_msg_video_title_value;
+        $form['updated']['list']['#options'][$v_id->entity_id]['company'] = $v_id->field_company_name__value;
+        $form['updated']['list']['#options'][$v_id->entity_id]['reply'] = 'reply';
+        $form['updated']['list']['#options'][$v_id->entity_id]['delete'] = 'delete';
+        $form['updated']['list']['#options'][$v_id->entity_id]['forward'] = 'forward';
+      }
+    }
+  }
+  unset($form['updated']['list']['#header']['subject']);
+  unset($form['updated']['list']['#header']['last_updated']);
+}
+
+/**
+ * Theme_privatemsg_list_header.
+ */
+function theme_privatemsg_list_header__video_id() {
+  return array(
+    'data' => t('Video Id'),
+    'class' => 'privatemsg-header-video-id',
+    '#weight' => -42,
+  );
+}
+
+/**
+ * Header definition for Video_title.
+ */
+function theme_privatemsg_list_header__video_title() {
+  return array(
+    'data' => t('Video Title'),
+    'class' => 'privatemsg-header-video-title',
+    '#weight' => -41,
+  );
+}
+
+/**
+ * Header definition for Video_reply.
+ */
+function theme_privatemsg_list_header__reply() {
+  return array(
+    'data' => '',
+    'class' => 'privatemsg-header-video-reply',
+    '#weight' => -39,
+  );
+}
+
+/**
+ * Header definition for Video_delete.
+ */
+function theme_privatemsg_list_header__delete() {
+  return array(
+    'data' => '',
+    'class' => 'privatemsg-header-video-delete',
+    '#weight' => -37,
+  );
+}
+
+/**
+ * Header definition for Video_forward.
+ */
+function theme_privatemsg_list_header__forward() {
+  return array(
+    'data' => '',
+    'class' => 'privatemsg-header-video-forward',
+    '#weight' => -38,
+  );
+}
+
+/**
+ * Header definition for Video_company.
+ */
+function theme_privatemsg_list_header__company() {
+  global $user;
+  if ((isset($user->roles[6]) && ($user->roles[6] == "Company User")) || (isset($user->roles[5]) && ($user->roles[5] == "Company Manager"))) {
+    return array(
+      'data' => '',
+      'class' => 'privatemsg-header-company',
+    );
+  }
+  else {
+    return array(
+      'data' => 'Company',
+      'class' => 'privatemsg-header-company',
+      '#weight' => -40,
+    );
+  }
+}
+
+/**
+ * Default theme pattern function to display forward action.
+ *
+ * @see theme_privatemsg_list_field()
+ */
+function theme_privatemsg_list_field__forward($arguments) {
+  global $user;
+  $thread = $arguments['thread'];
+  $field = array();
+  $video_id = $thread['video_id'];
+  if ((isset($user->roles[6]) && ($user->roles[6] == "Company User")) || (isset($user->roles[5]) && ($user->roles[5] == "Company Manager"))) {
+    $manager_id = get_user_manager();
+    $field['data'] = l(t("Forward"), 'company_subuser_dashboard/nojs/messages/new/' . $manager_id . '/' . $thread['video_id'] . '/' . $thread['video_title'], array('attributes' => array('class' => 'ctools-use-modal')));
+    $field['class'][] = 'privatemsg-list-forward';
+  }
+  else {
+    $field['data'] = '';
+    $field['class'][] = 'privatemsg-list-forward';
+  }
+  return $field;
+}
+
+/**
+ * Theme the participants field.
+ *
+ * @see theme_privatemsg_list_field()
+ */
+function theme_privatemsg_list_field__company($arguments) {
+  global $user;
+  $thread = $arguments['thread'];
+  if (!empty($thread['company'])) {
+    if ((isset($user->roles[6]) && ($user->roles[6] == "Company User")) || (isset($user->roles[5]) && ($user->roles[5] == "Company Manager"))) {
+      return array(
+        'data'  => '',
+        'class' => array('privatemsg-list-company'),
+      );
+    }
+    else {
+      return array(
+        'data'  => $thread['company'],
+        'class' => array('privatemsg-list-company'),
+      );
+    }
+  }
+  return array('data' => '');
+}
+
+/**
+ * Default theme pattern function to display delete action.  
+ *
+ * @see theme_privatemsg_list_field()
+ */
+function theme_privatemsg_list_field__delete($arguments) {
+  $thread = $arguments['thread'];
+  $field = array();
+  $video_id = $thread['video_id'];
+  $message = privatemsg_message_load($thread['thread_id']);
+  if (!empty($message)) {
+    $field['data'] = l(t("Delete"), 'messages/delete/' . $thread['thread_id'] . '/' . $message->mid);
+    $field['class'][] = 'privatemsg-list-delete';
+  }
+  return $field;
+}
+
+/**
+ * Default theme pattern function to display reply action.
+ *
+ * @see theme_privatemsg_list_field()
+ */
+function theme_privatemsg_list_field__reply($arguments) {
+  $thread = $arguments['thread'];
+  $field = array();
+  $video_id = $thread['video_id'];
+  $field['data'] = l(t("Reply"), 'messages/view/' . $thread['thread_id']);
+  $field['class'][] = 'privatemsg-list-reply';
+  return $field;
+}
+
+/**
+ * Default theme pattern function to display video_id.
+ *
+ * @see theme_privatemsg_list_field()
+ */
+function theme_privatemsg_list_field__video_id($arguments) {
+  $thread = $arguments['thread'];
+
+  $field = array();
+  $options = array();
+  $is_new = '';
+  if (!empty($thread['is_new'])) {
+    $is_new = theme('mark', array('type' => MARK_NEW));
+    $options['fragment'] = 'new';
+  }
+  $video_id = $thread['video_id'];
+  if ($thread['has_tokens']) {
+    $message = privatemsg_message_load($thread['thread_id']);
+    $video_id = privatemsg_token_replace($video_id, array('privatemsg_message' => $message), array('sanitize' => TRUE, 'privatemsg-show-span' => FALSE));
+  }
+  $field['data'] = l($video_id, 'messages/view/' . $thread['thread_id'], $options) . $is_new;
+  $field['class'][] = 'privatemsg-list-video-id';
+  return $field;
+}
+
+/**
+ * Define the field data.
+ */
+function theme_privatemsg_list_field__video_title($arguments) {
+  $thread = $arguments['thread'];
+  if (!empty($thread['video_title'])) {
+    return array(
+      'data'  => $thread['video_title'],
+      'class' => array('privatemsg-list-video-title'),
+    );
+  }
+
+  return array('data' => '');
+}
+
+/**
+ * Hook_query_privatemsg_list_alter.
+ */
+function company_subuser_dashboard_query_privatemsg_list_alter($query) {
+
+  $count_query = $query->getCountQuery();
+  $alias = $query->join('field_data_field_msg_video_id', 'fv', "%alias.entity_id = pmi.thread_id");
+  $alias = $count_query->join('field_data_field_msg_video_id', 'fv', "%alias.entity_id = pmi.thread_id");
+  $alias = $query->join('field_data_field_msg_video_title', 'fvt', "%alias.entity_id = pmi.thread_id");
+  $alias = $count_query->join('field_data_field_msg_video_title', 'fvt', "%alias.entity_id = pmi.thread_id");
+  $alias = $query->join('field_data_field_company_name_', 'fc', "%alias.entity_id = pmi.thread_id");
+  $alias = $count_query->join('field_data_field_company_name_', 'fc', "%alias.entity_id = pmi.thread_id");
+
+}
+
+/**
+ * Hook_privatemsg_message_view_alter.
+ */
+function company_subuser_dashboard_privatemsg_message_view_alter(&$var) {
+  $var['message_body'] = '<b>Message : </b>' . $var['message_body'];
+  $var['author_name_link'] = 'From : ' . $var['author_name_link'];
+}
+
+/**
+ * Hook_privatemessage_message_validate.
+ */
+function company_subuser_dashboard_privatemsg_message_validate($message, $form = FALSE) {
+  $result = array();
+  $error_messages = "";
+  if (!empty($message->field_msg_video_id[LANGUAGE_NONE][0]['value'])) {
+    $query = db_select('field_data_field_video_id', 'id');
+    $query->fields('id', array('field_video_id_value'));
+    $query->distinct();
+    $result = $query->execute()->fetchAllAssoc('field_video_id_value');
+    if (!array_key_exists($message->field_msg_video_id[LANGUAGE_NONE][0]['value'], $result)) {
+      $error_messages .= "Invalid video id.<br/>";
+    }
+  }
+  if (strlen($error_messages) > 0) {
+    form_set_error('', $error_messages);
+  }
+}
+
+/**
+ * Get company names.
+ */
+function get_company_names() {
+  $result = array();
+  $query2 = db_select('field_data_field_company_name', 'c');
+  $query2->fields('c', array('field_company_name_value'));
+  $query2->distinct();
+  $result2 = $query2->execute()->fetchAllAssoc('field_company_name_value');
+  if (!empty($result2)) {
+    foreach ($result2 as $key => $value) {
+      $result[$key] = $key;
+    }
+    return $result;
+  }
+  return $result;
+}
+
+/**
+ * Ajax callback for recipient by JQuery.
+ */
+function company_subuser_dashboard_company_callback($company) {
+  $query = db_select('users', 'u');
+  $query->fields('u', array('name', 'status'));
+  $query->join('field_data_field_company_name', 'f', 'f.entity_id = u.uid');
+  $query->where('f.field_company_name_value = :value', array(':value' => $company));
+  $result = $query->execute()->fetch();
+  if (!empty($result)) {
+    print ($result->name);
+  }
+  else {
+    print ("");
+  }
+}
+
+/**
+ * Ajax callback for video title by JQuery.
+ */
+function company_subuser_dashboard_videoid_callback($videoid) {
+  $query = db_select('node', 'n');
+  $query->fields('n', array('title'));
+  $query->join('field_data_field_video_id', 'f', 'f.entity_id = n.nid');
+  $query->condition('n.type', 'video_management', '=');
+  $query->where('f.field_video_id_value = :id', array(':id' => $videoid));
+  $result = $query->execute()->fetch();
+  if (!empty($result)) {
+    print ($result->title);
+  }
+  else {
+    print ("Invalid video id");
+  }
+}
+
+/**
+ * Hook user login().
+ */
+function company_subuser_dashboard_user_login(&$edit, $account) {
+  global $user;
+  // Redirect for dm user.
+  if (in_array(6, array_keys($user->roles))) {
+    drupal_goto(variable_get('company_user_dashboard'));
+  }
+  // Redirect for dm company.
+  if (in_array(5, array_keys($user->roles))) {
+    drupal_goto(variable_get('company_dashboard'));
+  }
+  // Redirect for dm admin.
+  if (in_array(4, array_keys($user->roles))) {
+    drupal_goto(variable_get('admin_dashboard'));
+  }
+}

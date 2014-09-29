@@ -1,0 +1,4 @@
+name = Company Sub User Dashboard
+package = Dailymotion Meta data
+description = Used to manage company sub users related functionality.
+core = 7.x
